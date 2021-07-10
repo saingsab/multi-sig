@@ -1,4 +1,5 @@
 const { expectRevert } = require('@openzeppelin/test-helpers');
+const { web3 } = require('@openzeppelin/test-helpers/src/setup');
 const Wallet = artifacts.require('Wallet');
 
 contract('Wallet', (accounts) => {
@@ -17,5 +18,38 @@ contract('Wallet', (accounts) => {
         assert(approver[1] === accounts[1]);
         assert(approver[2] === accounts[2]);
         assert(quorum.toNumber() == 2);
+    });
+    it('should creatre transfers', async () => {
+        await wallet.createTransfer(100, accounts[5], { from: accounts[0] });
+        const transfers = await wallet.getTransfers();
+        assert(transfers.length === 1);
+        assert(transfers[0].id === '0');
+        assert(transfers[0].amount === '100');
+        assert(transfers[0].to === accounts[5]);
+        assert(transfers[0].approvals === '0');
+        assert(transfers[0].sent === false);
+    });
+    it('approve only transfer FN', async () => {
+        await expectRevert(
+            wallet.createTransfer(100, accounts[5], { from: accounts[4] }),
+            'only approver allowed'
+        );
+    });
+    it('approvals increament check', async () => {
+        await wallet.createTransfer(1000, accounts[5], { from: accounts[0] });
+        await wallet.approveTransfer(0, { from: accounts[0] });
+        const transfers = await wallet.getTransfers();
+        const balance = await web3.eth.getBalance(wallet.address);
+        assert(transfers[0].approvals === '1');
+        assert(transfers[0].sent === false);
+        assert(balance === '1000');
+    });
+    it('successfully sent after reach quorum', async () => {
+        const balanceBefore = web3.utils.toBN(await web3.eth.getBalance(accounts[6]));
+        await wallet.createTransfer(100, accounts[6], { from: accounts[0] });
+        await wallet.approveTransfer(0, { from: accounts[0] });
+        await wallet.approveTransfer(0, { from: accounts[1] });
+        const balanceAfter = web3.utils.toBN(await web3.eth.getBalance(accounts[6]));
+        assert(balanceAfter.sub(balanceBefore).toNumber() === 100);
     });
 });
